@@ -5,6 +5,9 @@
    https://www.instructables.com/id/Azeron-Game-Pad-DIY-Under-35/
    JerkWagon & Anon Engineering @Discord 9/2020
    Rev. 091620vs
+   Forked by Zenduin December 11th 2022
+   * added simplified 8-way code for joystick
+   * tweaked pinout to match wiring diagram (unless I wired mine wrong)
 */
 
 //#define DEBUG // Comment out for Keyboard, uncomment for Serial debugging
@@ -63,15 +66,16 @@
 //Globals
 const int xCenter = 250;    // Tweak for your D-pad's center values, should be 250
 const int yCenter = 250;
-const int xDeadband = 150;  // Sets the size of the center deadband
-const int yDeadband = 150;
+const int xDeadband = 100;  // Sets the size of the center deadband
+const int yDeadband = 100;
+double lastPosX = 0.0;
+double lastPosY = 0.0;
 
 // D-pad: UP = w, RIGHT = d, DOWN = s, LEFT = a, DPadNone is "center value"
-const char dPadUp = 'w';
-const char dPadRt = 'd';
-const char dPadDn = 's';
-const char dPadLt = 'a';
-const char dPadNone = '0';
+const char dPadUp = 'e';
+const char dPadRt = 'w';
+const char dPadDn = 'q';
+const char dPadLt = 's';
 
 typedef struct {
   int pin;
@@ -81,19 +85,19 @@ typedef struct {
 
 // Switch pins, {PIN, KEY, False}
 dKey dSwitch[] = {
-  {19, 'u', false}, // Pin 19 = A1
-  {2, KEY_LEFT_SHIFT, false},
-  {3, '1', false},
-  {4, 'f', false},
-  {5, 'q', false},
-  {6, '2', false},
-  {7, 'e', false},
-  {8, 'x', false},
-  {9, KEY_TAB, false},
-  {10, 't', false},
-  {16, 'b', false},
-  {14, 'r', false},
-  {15, '3', false}
+  {4, '7', false}, //near little finger  
+  {5, '8', false}, // near ring finger
+  {8, '9', false}, // near middle finger
+  {15, '0', false}, // near forefinger
+  {3, '2', false}, // mid little finger
+  {6, '6', false}, // mid ring finger
+  {9, '-', false}, // mid middle finger
+  {14, '=', false}, // mid forefinger
+  {2, '1', false}, // far little finger
+  {7, '3', false}, // far ring finger  
+  {10, '4', false}, // far middle finger  
+  {16, '5', false}, //far forefinger
+  {21, ' ', false}, // Pin 21 = A3 // Joystick btn
 };
 
 void setup() {
@@ -124,10 +128,8 @@ void loop() {
 }
 
 void readJoystick() {
-  float angle = 0.0;
-  static char lastKeyPressed = dPadNone;
-  int joyX = analogRead(A2);  // Or A3, rotates 0 angle (0 degrees is full right by default)
-  int joyY = analogRead(A3);  // Or A2, rotates 0 angle
+  int joyX = analogRead(20);  // Or A3, rotates 0 angle (0 degrees is full right by default)
+  int joyY = analogRead(19);  // Or A2, rotates 0 angle
   double mapJoyX = map(joyX, 0, 1023, 0, 500);
   double mapJoyY = map(joyY, 0, 1023, 0, 500);
   // For test, use to determine xCenter, yCenter
@@ -135,85 +137,38 @@ void readJoystick() {
   //DEBUG_PRINTLN(mapJoyX);
   //DEBUG_PRINT("Mapped Y value: ");
   //DEBUG_PRINTLN(mapJoyY);
-  /*
-    // Get joystick angle
-    if X AND Y = center then angle = 1000     // In deadband
-      release key(last key)
-    else angle = arctangent y/x * 57.2957795  // Radians to degrees
-    // Which quadrant?
-    if angle <> 1000                          // If NOT in deadband
-      if angle >= 45 and <= 135 then UP
-      if angle < 45 and angle > -45 then RIGHT
-      if angle <= -45 and angle >= -135 then DOWN
-      if angle < -135 and angle >= -180 OR <= 180 and angle > 135 then LEFT 
-  */
-  // Determine if joystick is centered...
-  if ((mapJoyX <= xCenter + xDeadband && mapJoyX >= xCenter - xDeadband) && (mapJoyY <= yCenter + yDeadband && mapJoyY >= yCenter - yDeadband))  {
-    angle = 1000.0;
-    if (lastKeyPressed != dPadNone)  {
-      KEY_RELEASE(lastKeyPressed);
-      DEBUG_PRINT("Center: release ");
-      DEBUG_PRINTLN(lastKeyPressed);
-      lastKeyPressed = dPadNone;
+  if (mapJoyX <= xCenter + xDeadband && mapJoyX >= xCenter - xDeadband) {
+    if (lastPosX >= xCenter + xDeadband) {
+      KEY_RELEASE(dPadRt);      
+    } else if (lastPosX <= xCenter - xDeadband) {
+      KEY_RELEASE(dPadLt);
+    }
+  } else {
+    if (mapJoyX >= xCenter + xDeadband) { // Right
+      if (lastPosX <= xCenter - xDeadband) KEY_RELEASE(dPadLt); // Was Left
+      if (lastPosX <= xCenter + xDeadband) KEY_PRESS(dPadRt); // Was Center
+    } else if (mapJoyX <= xCenter - xDeadband) { // Left
+      if (lastPosX >= xCenter + xDeadband) KEY_RELEASE(dPadRt); // Was Left
+      if (lastPosX >= xCenter - xDeadband) KEY_PRESS(dPadLt); // Was Center
     }
   }
-  else  { // Else determine its angle
-    angle = atan2(mapJoyY - yCenter , mapJoyX - xCenter) * 57.2957795;
-  }
-  //DEBUG_PRINT("Angle: ");
-  //DEBUG_PRINTLN(angle);
-  if ((angle >= 45 && angle <= 135)) {  // UP
-    if (lastKeyPressed != dPadUp)  {
-      if (lastKeyPressed != dPadNone)  {
-        KEY_RELEASE(lastKeyPressed);
-        DEBUG_PRINT("Release key ");
-        DEBUG_PRINTLN(lastKeyPressed);
-      }
-      lastKeyPressed = dPadUp;
-      KEY_PRESS(dPadUp)
-      DEBUG_PRINT("Key pressed: ");
-      DEBUG_PRINTLN (dPadUp);
+  if (mapJoyY <= yCenter + yDeadband && mapJoyY >= yCenter - yDeadband) {
+    if (lastPosY >= yCenter + yDeadband) {
+      KEY_RELEASE(dPadUp);      
+    } else if (lastPosY <= yCenter - yDeadband) {
+      KEY_RELEASE(dPadDn);
+    }
+  } else {
+    if (mapJoyY >= yCenter + yDeadband) { // Right
+      if (lastPosY <= yCenter - yDeadband) KEY_RELEASE(dPadDn); // Was Left
+      if (lastPosY <= yCenter + yDeadband) KEY_PRESS(dPadUp); // Was Center
+    } else if (mapJoyY <= yCenter - yDeadband) { // Left
+      if (lastPosY >= yCenter + yDeadband) KEY_RELEASE(dPadUp); // Was Left
+      if (lastPosY >= yCenter - yDeadband) KEY_PRESS(dPadDn); // Was Center
     }
   }
-  else if (angle < 45 && angle > -45) {  // RIGHT
-    if (lastKeyPressed != dPadRt)  {
-      if (lastKeyPressed != dPadNone)  {
-        KEY_RELEASE(lastKeyPressed);
-        DEBUG_PRINT("Release key ");
-        DEBUG_PRINTLN(lastKeyPressed);
-      }
-      lastKeyPressed = dPadRt;
-      KEY_PRESS(dPadRt)
-      DEBUG_PRINT("Key pressed: ");
-      DEBUG_PRINTLN (dPadRt);
-    }
-  }
-  else if (angle <= -45 && angle >= -135) {  // DOWN
-    if (lastKeyPressed != dPadDn)  {
-      if (lastKeyPressed != dPadNone)  {
-        KEY_RELEASE(lastKeyPressed);
-        DEBUG_PRINT("Release key ");
-        DEBUG_PRINTLN(lastKeyPressed);
-      }
-      lastKeyPressed = dPadDn;
-      KEY_PRESS(dPadDn)
-      DEBUG_PRINT("Key pressed: ");
-      DEBUG_PRINTLN (dPadDn);
-    }
-  }
-  else if ((angle < -135 && angle >= -180) || (angle <= 180 && angle > 135))  { // LEFT
-    if (lastKeyPressed != dPadLt)  {
-      if (lastKeyPressed != dPadNone)  {
-        KEY_RELEASE(lastKeyPressed);
-        DEBUG_PRINT("Release key ");
-        DEBUG_PRINTLN(lastKeyPressed);
-      }
-      lastKeyPressed = dPadLt;
-      KEY_PRESS(dPadLt)
-      DEBUG_PRINT("Key pressed: ");
-      DEBUG_PRINTLN (dPadLt);
-    }
-  }
+  lastPosX = mapJoyX;
+  lastPosY = mapJoyY;
 }
 
 void readKeys() {
